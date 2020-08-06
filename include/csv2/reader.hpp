@@ -102,24 +102,20 @@ public:
       size_t start_;
       size_t current_;
       size_t end_;
+      bool escaped_;
+      size_t cell_start_;
+      size_t cell_end_;
 
     public:
       CellIterator(const char *buffer, size_t buffer_size, size_t start, size_t end)
           : buffer_(buffer), buffer_size_(buffer_size), start_(start), current_(start_), end_(end) {
+            advance();
       }
 
-      CellIterator &operator++() {
-        current_ += 1;
-        return *this;
-      }
-
-      Cell operator*() {
-        bool escaped{false};
-        class Cell cell;
-        cell.buffer_ = buffer_;
-        cell.start_ = current_;
-        cell.end_ = end_;
-
+    private:
+      CellIterator &advance() {
+        escaped_ = false;
+        cell_start_ = current_;
         size_t last_quote_location = 0;
         bool quote_opened = false;
         for (auto i = current_; i < end_; i++) {
@@ -127,9 +123,8 @@ public:
           if (buffer_[i] == delimiter::value && !quote_opened) {
             // actual delimiter
             // end of cell
-            cell.end_ = current_;
-            cell.escaped_ = escaped;
-            return cell;
+            cell_end_ = current_;
+            return *this;
           } else {
             if (buffer_[i] == quote_character::value) {
               if (!quote_opened) {
@@ -137,15 +132,35 @@ public:
                 quote_opened = true;
                 last_quote_location = i;
               } else {
-                escaped = (last_quote_location == i - 1);
-                last_quote_location += (i - last_quote_location) * size_t(!escaped);
-                quote_opened = escaped || (buffer_[i + 1] != delimiter::value);
+                escaped_ = (last_quote_location == i - 1);
+                last_quote_location += (i - last_quote_location) * size_t(!escaped_);
+                quote_opened = escaped_ || (buffer_[i + 1] != delimiter::value);
               }
             }
           }
         }
-        cell.end_ = current_ + 1;
+        cell_end_ = current_ + 1;
+        return *this;
+      }
+    
+    public:
+      CellIterator &operator++() {
+        current_ += 1;
+        return advance();
+      }
+
+      Cell operator*() {
+        class Cell cell;
+        cell.buffer_ = buffer_;
+        cell.start_ = cell_start_;
+        cell.end_ = cell_end_;
+        cell.escaped_ = escaped_;
         return cell;
+      }
+
+      CellIterator &operator+(size_t increment) {
+        for (size_t i = 0; i < increment; ++i) { ++(*this); }
+        return *this;
       }
 
       bool operator!=(const CellIterator &rhs) { return current_ != rhs.current_; }
